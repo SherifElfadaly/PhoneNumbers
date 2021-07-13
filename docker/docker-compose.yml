@@ -1,0 +1,30 @@
+version: '3.2'
+
+services:
+    phone_number_redis:
+      container_name: 'phone_number_redis'
+      image: redis:latest
+      networks:
+        - backend
+      ports:
+        - "${REDIS_EXTERNAL_PORT}:${REDIS_PORT}"
+      restart: always
+
+    phone_number_app:
+      container_name: 'phone_number'
+      volumes:
+        - ../:/var/www/html/
+        - ../.env:/var/www/html/.env
+      build:
+        context: './'
+        dockerfile: './app/dockerfile'
+      depends_on:
+        - 'phone_number_redis'
+      networks:
+        - backend
+      ports:
+        - "${APP_EXTERNAL_PORT}:${APP_PORT}"
+      restart: always
+
+networks:
+  backend:

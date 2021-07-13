@@ -1,0 +1,94 @@
+FROM php:8.0
+
+WORKDIR /var/www/html/
+
+# development packages
+RUN apt-get update && apt-get install -y \
+    supervisor \
+    git \
+    zip \
+    curl \
+    sudo \
+    unzip \
+    libicu-dev \
+    libbz2-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libwebp-dev \
+    libxpm-dev \
+    libmcrypt-dev \
+    libreadline-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libzip-dev \
+    g++ \
+    cron \
+    nano \
+    openssl \
+    libssl-dev
+
+# add php c
+COPY app/php.ini /usr/local/etc/php/conf.d
+COPY app/laravel.ini /usr/local/etc/php/conf.d
+COPY app/opcache.ini /usr/local/etc/php/conf.d
+
+# add supervisor supervisor
+COPY app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+RUN docker-php-ext-install \
+    bz2 \
+    intl \
+    iconv \
+    bcmath \
+    opcache \
+    calendar \
+    mbstring \
+    pdo_mysql \
+    zip \
+    gd \
+    pcntl
+
+RUN docker-php-ext-configure gd \
+    --enable-gd \
+    --with-freetype \
+    --with-jpeg \
+    --with-xpm \
+    --with-webp
+
+RUN cd /usr/src/php/ext/gd && make
+RUN docker-php-ext-install -j$(nproc) gd
+
+RUN docker-php-source extract && \
+    pecl install redis && \
+    docker-php-ext-enable redis && \
+    docker-php-source delete
+
+# installing swoole
+RUN cd /tmp && git clone https://github.com/swoole/swoole-src.git && \
+    cd swoole-src && \
+    git checkout v4.6.4 && \
+    phpize  && \
+    ./configure --enable-openssl && \
+    make && make install
+
+RUN touch /usr/local/etc/php/conf.d/swoole.ini && \
+    echo 'extension=swoole.so' > /usr/local/etc/php/conf.d/swoole.ini
+
+# composer
+# RUN curl -sS https://getcomposer.org/installer | php && \
+#     mv composer.phar /usr/local/bin/composer && \
+#     composer global require hirak/prestissimo --no-plugins --no-scripts
+
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer
+
+# configure cron
+RUN touch /etc/cron.d/crons
+RUN touch /var/log/cron.log
+RUN chmod 0644 /etc/cron.d/crons
+
+# register laravel scheduler
+COPY app/crons /etc/cron.d/crons
+
+# start server, clear cach, run migrations and restart queue
+CMD sudo supervisord -c /etc/supervisor/conf.d/supervisord.conf
